@@ -8,7 +8,7 @@ class Scanloader(torch.utils.data.Dataset):
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.label_type = label_type
-        self.query = f"SELECT Image, {self.label_type}, GWlabels, ANAlabels FROM mindboggle101"
+        self.query = f"SELECT Image, {self.label_type} FROM mindboggle101"
         self.cursor.execute(self.query)
         self.data = self.cursor.fetchall()
         self.len = len(self.data)
