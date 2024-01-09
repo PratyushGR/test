@@ -3,35 +3,45 @@ import torch
 import zlib
 import numpy as np
 
-class DataLoader(torch.utils.data.Dataset):
-    def __init__(self, db_file, label_type='label'):
+class Scanloader(torch.utils.data.Dataset):
+    def __init__(self, db_file, label_type='label', num_cubes=1):
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
-        self.cursor.execute("SELECT Image, Label, GWlabels, ANAlabels FROM mindboggle101")
+        self.label_type = label_type
+        self.query = f"SELECT Image, {self.label_type}, GWlabels, ANAlabels FROM mindboggle101"
+        self.cursor.execute(self.query)
         self.data = self.cursor.fetchall()
         self.len = len(self.data)
-        self.label_type = label_type
+        self.num_cubes = num_cubes
 
     def __len__(self):
         return self.len
 
+    def divide_into_sub_cubes(self, tensor):
+        sub_cubes = []
+        sub_cube_size = tensor.shape[0] // self.num_cubes  # Assuming the tensor is a cube
+
+        for i in range(self.num_cubes):
+            for j in range(self.num_cubes):
+                for k in range(self.num_cubes):
+                    sub_cube = tensor[
+                        i * sub_cube_size: (i + 1) * sub_cube_size,
+                        j * sub_cube_size: (j + 1) * sub_cube_size,
+                        k * sub_cube_size: (k + 1) * sub_cube_size
+                    ].clone()
+                    sub_cubes.append(sub_cube)
+
+        sub_cubes = torch.stack(sub_cubes, 0)
+        return sub_cubes
+
     def __getitem__(self, idx):
         sample = self.data[idx]
         image = zlib.decompress(sample[0])
-
-        if self.label_type == 'Label':
-            label = zlib.decompress(sample[1])
-            label_tensor = torch.from_numpy(np.frombuffer(label, dtype=np.float32).reshape((256, 256, 256)))
-            return torch.from_numpy(np.frombuffer(image, dtype=np.float32).reshape((256, 256, 256))), label_tensor
-        elif self.label_type == 'GWlabels':
-            gw_labels = zlib.decompress(sample[2])
-            gw_labels_tensor = torch.from_numpy(np.frombuffer(gw_labels, dtype=np.float32).reshape((256, 256, 256)))
-            return torch.from_numpy(np.frombuffer(image, dtype=np.float32).reshape((256, 256, 256))), gw_labels_tensor
-        elif self.label_type == 'ANAlabels':
-            ana_labels = zlib.decompress(sample[3])
-            ana_labels_tensor = torch.from_numpy(np.frombuffer(ana_labels, dtype=np.float32).reshape((256, 256, 256)))
-            return torch.from_numpy(np.frombuffer(image, dtype=np.float32).reshape((256, 256, 256))), ana_labels_tensor
-
+        image_tensor = torch.from_numpy(np.frombuffer(image, dtype=np.float32).reshape((256, 256, 256)))
+        label = zlib.decompress(sample[1])
+        label_tensor = torch.from_numpy(np.frombuffer(label, dtype=np.float32).reshape((256, 256, 256)))
+        return self.divide_into_sub_cubes(image_tensor), self.divide_into_sub_cubes(label_tensor)
+      
     def split_dataset(self):
         train_size = int(0.7 * self.len)
         valid_size = int(0.2 * self.len)
@@ -42,5 +52,5 @@ class DataLoader(torch.utils.data.Dataset):
         train_data, valid_data, infer_data = self.split_dataset()
         train_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=shuffle)
         valid_loader = torch.utils.data.DataLoader(valid_data, batch_size=batch_size, shuffle=False)
-        infer_loader = torch.utils.data.DataLoader(infer_data, batch_size=1, shuffle=False)
+        infer_loader = torch.utils.data.DataLoader(infer_data, batch_size=batch_size, shuffle=False)
         return train_loader, valid_loader, infer_loader
