@@ -5,6 +5,7 @@ import numpy as np
 
 class Scanloader(torch.utils.data.Dataset):
     def __init__(self, db_file, label_type='label', num_cubes=1):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.conn = sqlite3.connect(db_file)
         self.cursor = self.conn.cursor()
         self.label_type = label_type
@@ -40,7 +41,7 @@ class Scanloader(torch.utils.data.Dataset):
         image_tensor = torch.from_numpy(np.frombuffer(image, dtype=np.float32).reshape((256, 256, 256)))
         label = zlib.decompress(sample[1])
         label_tensor = torch.from_numpy(np.frombuffer(label, dtype=np.float32).reshape((256, 256, 256)))
-        return self.divide_into_sub_cubes(image_tensor), self.divide_into_sub_cubes(label_tensor)
+        return self.divide_into_sub_cubes(image_tensor.to(self.device), self.divide_into_sub_cubes(label_tensor.to(self.device))
       
     def split_dataset(self):
         train_size = int(0.7 * self.len)
